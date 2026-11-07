@@ -1,0 +1,885 @@
+schema_version: 2
+diagram_id: architecture
+mode: architecture
+orientation: LR
+scope: Big-picture system view of the community chat and voice platform; per-service
+  internals and endpoint detail are out of scope.
+sources:
+- path: SYSTEM_DESIGN.md
+  sha256: 480d57b91b0576cc07a740b6f927e37f0f6a6b89dbd21030ffb50df1694f784a
+entities:
+- id: browser
+  label: Web browser
+  kind: annotation
+  external: true
+  external_role: actor
+  lane: edge
+  row: 0
+  evidence:
+  - path: SYSTEM_DESIGN.md
+    quote: WebSocket endpoint for browsers
+- id: identity
+  name: identity_service
+  label: Identity service
+  kind: service
+  technology: kubernetes-pod
+  lane: user-facing
+  row: 0
+  evidence:
+  - path: SYSTEM_DESIGN.md
+    quote: Accounts, email verification, password reset, sessions, access-token issuance
+  - path: SYSTEM_DESIGN.md
+    quote: '| DEP-004 | `identity_service` | `notification_service` | async | `EVT-001`
+      |'
+- id: identity-db
+  label: Identity PostgreSQL
+  kind: database
+  technology: postgresql
+  lane: user-facing
+  row: 0
+  inside: identity
+  evidence:
+  - path: SYSTEM_DESIGN.md
+    quote: '**PostgreSQL:** `User` (identity, unique email, unique username, display
+      name, email_verified flag, status)'
+- id: identity-resend
+  label: Resend
+  kind: annotation
+  external: true
+  external_role: dependency
+  lane: user-facing
+  row: 0
+  inside: identity
+  evidence:
+  - path: SYSTEM_DESIGN.md
+    quote: '**Resend (transactional email)** — outbound REST via official SDK'
+- id: moderation
+  name: moderation_service
+  label: Moderation service
+  kind: service
+  technology: kubernetes-pod
+  lane: user-facing
+  row: 1
+  evidence:
+  - path: SYSTEM_DESIGN.md
+    quote: Sanctions (mute/kick/ban), audit log, appeals, automod rules
+  - path: SYSTEM_DESIGN.md
+    quote: '| DEP-001 | `moderation_service` | `community_service` | sync | `API-001`
+      |'
+- id: moderation-db
+  label: Moderation PostgreSQL
+  kind: database
+  technology: postgresql
+  lane: user-facing
+  row: 1
+  inside: moderation
+  evidence:
+  - path: SYSTEM_DESIGN.md
+    quote: '**PostgreSQL:** `Sanction` (community, target, actor, type, reason, issued_at,
+      expires_at, lifted_at, lift source)'
+- id: voice
+  name: voice_service
+  label: Voice service
+  kind: service
+  technology: kubernetes-pod
+  lane: user-facing
+  row: 2
+  evidence:
+  - path: SYSTEM_DESIGN.md
+    quote: Voice channel join/leave, capacity, presence, LiveKit integration
+  - path: SYSTEM_DESIGN.md
+    quote: '| DEP-002 | `voice_service` | `community_service` | sync | `API-002` |'
+- id: voice-db
+  label: Voice PostgreSQL
+  kind: database
+  technology: postgresql
+  lane: user-facing
+  row: 2
+  inside: voice
+  evidence:
+  - path: SYSTEM_DESIGN.md
+    quote: '**PostgreSQL:** `VoiceRoom` (channel ↔ LiveKit room name, capacity), `SeatReservation`
+      (short TTL)'
+- id: voice-livekit
+  label: LiveKit Cloud
+  kind: annotation
+  external: true
+  external_role: dependency
+  lane: user-facing
+  row: 2
+  inside: voice
+  evidence:
+  - path: SYSTEM_DESIGN.md
+    quote: '**LiveKit Cloud (managed real-time voice/video)**'
+- id: social
+  name: social_service
+  label: Social service
+  kind: service
+  technology: kubernetes-pod
+  lane: user-facing
+  row: 3
+  evidence:
+  - path: SYSTEM_DESIGN.md
+    quote: Friend requests, friendships, private conversations (DM / group DM)
+  - path: SYSTEM_DESIGN.md
+    quote: '| DEP-010 | `social_service` | `notification_service` | async | `EVT-007`
+      |'
+- id: social-db
+  label: Social PostgreSQL
+  kind: database
+  technology: postgresql
+  lane: user-facing
+  row: 3
+  inside: social
+  evidence:
+  - path: SYSTEM_DESIGN.md
+    quote: '**PostgreSQL:** `FriendRequest` (sender, recipient, status), `Friendship`
+      (unordered pair)'
+- id: realtime
+  name: realtime_gateway
+  label: Realtime gateway
+  kind: service
+  technology: kubernetes-pod
+  lane: user-facing
+  row: 4
+  evidence:
+  - path: SYSTEM_DESIGN.md
+    quote: WebSocket push of live events to browsers
+  - path: SYSTEM_DESIGN.md
+    quote: '| DEP-003 | `realtime_gateway` | `messaging_service` | sync | `API-003`
+      |'
+- id: kafka
+  name: Kafka
+  label: Kafka event bus
+  kind: broker
+  technology: kafka
+  lane: kafka
+  row: 0
+  evidence:
+  - path: SYSTEM_DESIGN.md
+    quote: '**Kafka topics:** `identity_events`, `community_events`, `moderation_events`,
+      `social_events`, `message_events`, `voice_events`, `notification_events`'
+  - path: SYSTEM_DESIGN.md
+    quote: at-least-once; every consumer deduplicates on `envelope.event_id`
+- id: community
+  name: community_service
+  label: Community service
+  kind: service
+  technology: kubernetes-pod
+  lane: internal
+  column: 1
+  row: 0
+  evidence:
+  - path: SYSTEM_DESIGN.md
+    quote: Communities, channels, invites, memberships, roles & permissions
+  - path: SYSTEM_DESIGN.md
+    quote: '| DEP-001 | `moderation_service` | `community_service` | sync | `API-001`
+      |'
+- id: community-db
+  label: Community PostgreSQL
+  kind: database
+  technology: postgresql
+  lane: internal
+  column: 1
+  row: 0
+  inside: community
+  evidence:
+  - path: SYSTEM_DESIGN.md
+    quote: '**PostgreSQL:** `Community`, `Channel` (kind `text|voice`, position, voice
+      capacity)'
+- id: messaging
+  name: messaging_service
+  label: Messaging service
+  kind: service
+  technology: kubernetes-pod
+  lane: internal
+  column: 1
+  row: 1
+  evidence:
+  - path: SYSTEM_DESIGN.md
+    quote: Messages, threads, reactions, mentions, image attachments, automod enforcement
+  - path: SYSTEM_DESIGN.md
+    quote: '| DEP-003 | `realtime_gateway` | `messaging_service` | sync | `API-003`
+      |'
+- id: messaging-db
+  label: Messaging PostgreSQL
+  kind: database
+  technology: postgresql
+  lane: internal
+  column: 1
+  row: 1
+  inside: messaging
+  evidence:
+  - path: SYSTEM_DESIGN.md
+    quote: '**PostgreSQL:** `Message` (container type/id, author, content ≤ 4,000
+      chars, thread root, edited_at, deleted_at, deletion reason, client_message_id)'
+- id: messaging-images
+  label: Message images
+  kind: storage
+  technology: s3-compatible
+  lane: internal
+  column: 1
+  row: 1
+  inside: messaging
+  evidence:
+  - path: SYSTEM_DESIGN.md
+    quote: '**S3-compatible object storage:** image attachment objects (private bucket,
+      presigned PUT/GET, 10 MB max object size enforced on upload policy)'
+- id: notification
+  name: notification_service
+  label: Notification service
+  kind: service
+  technology: kubernetes-pod
+  lane: internal
+  column: 1
+  row: 2
+  evidence:
+  - path: SYSTEM_DESIGN.md
+    quote: In-app notification inbox, preferences, notification emails
+  - path: SYSTEM_DESIGN.md
+    quote: '| DEP-004 | `identity_service` | `notification_service` | async | `EVT-001`
+      |'
+- id: notification-db
+  label: Notification PostgreSQL
+  kind: database
+  technology: postgresql
+  lane: internal
+  column: 1
+  row: 2
+  inside: notification
+  evidence:
+  - path: SYSTEM_DESIGN.md
+    quote: '**PostgreSQL:** `Notification` (recipient, kind, title, summary, deep
+      link, read_at)'
+- id: notification-resend
+  label: Resend
+  kind: annotation
+  external: true
+  external_role: dependency
+  lane: internal
+  column: 1
+  row: 2
+  inside: notification
+  evidence:
+  - path: SYSTEM_DESIGN.md
+    quote: '**Resend (transactional email)** — outbound REST via official SDK for
+      mention, friend-request, moderation-notice, and appeal-outcome emails'
+relationships:
+- id: r-browser-identity
+  source: browser
+  target: identity
+  type: request
+  interaction:
+    channel: direct
+    purpose: sign-up, sign-in and session refresh
+    protocol: HTTPS
+  evidence:
+  - path: SYSTEM_DESIGN.md
+    quote: client → `identity_service /auth/register`
+  - path: SYSTEM_DESIGN.md
+    quote: JSON over HTTPS
+- id: r-browser-moderation
+  source: browser
+  target: moderation
+  type: request
+  interaction:
+    channel: direct
+    purpose: sanction status and appeals
+    protocol: HTTPS
+  evidence:
+  - path: SYSTEM_DESIGN.md
+    quote: 'Member-facing status: a sanctioned user can read their own active sanctions
+      (reason, expiry, whether an appeal is possible)'
+  - path: SYSTEM_DESIGN.md
+    quote: JSON over HTTPS
+- id: r-browser-voice
+  source: browser
+  target: voice
+  type: request
+  interaction:
+    channel: direct
+    purpose: voice channel join and leave
+    protocol: HTTPS
+  evidence:
+  - path: SYSTEM_DESIGN.md
+    quote: '`/voice/channels/{id}/join`'
+  - path: SYSTEM_DESIGN.md
+    quote: JSON over HTTPS
+- id: r-browser-social
+  source: browser
+  target: social
+  type: request
+  interaction:
+    channel: direct
+    purpose: friend requests and private conversations
+    protocol: HTTPS
+  evidence:
+  - path: SYSTEM_DESIGN.md
+    quote: 'Friend requests: send (by user_id resolved via identity''s public lookup),
+      accept, decline, cancel; friend list; remove friend.'
+  - path: SYSTEM_DESIGN.md
+    quote: JSON over HTTPS
+- id: r-browser-realtime
+  source: browser
+  target: realtime
+  type: event
+  interaction:
+    channel: streaming
+    purpose: live event push over WebSocket
+  evidence:
+  - path: SYSTEM_DESIGN.md
+    quote: WebSocket upgrade with access token → server-pushed event frames `{type,
+      scope, data}`
+- id: r-moderation-community
+  source: moderation
+  target: community
+  type: request
+  interaction:
+    channel: direct
+    purpose: permission and hierarchy check
+  evidence:
+  - path: SYSTEM_DESIGN.md
+    quote: Sync consumer of API-001 (`community_service`)
+  - path: SYSTEM_DESIGN.md
+    quote: internal REST calls carry a per-edge service token
+- id: r-voice-community
+  source: voice
+  target: community
+  type: request
+  interaction:
+    channel: direct
+    purpose: voice join authorization
+  evidence:
+  - path: SYSTEM_DESIGN.md
+    quote: Sync consumer of API-002 (`community_service`) at join time
+- id: r-realtime-messaging
+  source: realtime
+  target: messaging
+  type: request
+  interaction:
+    channel: direct
+    purpose: subscription scope lookup
+  evidence:
+  - path: SYSTEM_DESIGN.md
+    quote: Sync consumer of API-003 (`messaging_service`) at connect time
+- id: r-identity-produces
+  source: identity
+  target: kafka
+  type: event
+  direction: forward
+  interaction:
+    channel: messaging
+    purpose: account and email changes
+    protocol: Kafka
+  messaging:
+    role: producer
+    topic: identity_events
+  evidence:
+  - path: SYSTEM_DESIGN.md
+    quote: '**Kafka:** produces `identity_events`'
+- id: r-moderation-produces
+  source: moderation
+  target: kafka
+  type: event
+  direction: forward
+  interaction:
+    channel: messaging
+    purpose: sanctions, automod changes and appeal outcomes
+    protocol: Kafka
+  messaging:
+    role: producer
+    topic: moderation_events
+  evidence:
+  - path: SYSTEM_DESIGN.md
+    quote: '**Kafka:** produces `moderation_events`'
+- id: r-community-produces
+  source: community
+  target: kafka
+  type: event
+  direction: forward
+  interaction:
+    channel: messaging
+    purpose: membership and channel changes
+    protocol: Kafka
+  messaging:
+    role: producer
+    topic: community_events
+  evidence:
+  - path: SYSTEM_DESIGN.md
+    quote: '**Kafka:** produces `community_events`; consumes `moderation_events` (`member_sanction_changed`)'
+- id: r-community-consumes
+  source: kafka
+  target: community
+  type: event
+  direction: forward
+  interaction:
+    channel: messaging
+    purpose: sanction decisions
+    protocol: Kafka
+  messaging:
+    role: consumer
+    topic: moderation_events
+  evidence:
+  - path: SYSTEM_DESIGN.md
+    quote: '**Kafka:** produces `community_events`; consumes `moderation_events` (`member_sanction_changed`)'
+- id: r-social-produces
+  source: social
+  target: kafka
+  type: event
+  direction: forward
+  interaction:
+    channel: messaging
+    purpose: friend requests and conversations
+    protocol: Kafka
+  messaging:
+    role: producer
+    topic: social_events
+  evidence:
+  - path: SYSTEM_DESIGN.md
+    quote: '**Kafka:** produces `social_events`'
+- id: r-messaging-produces
+  source: messaging
+  target: kafka
+  type: event
+  direction: forward
+  interaction:
+    channel: messaging
+    purpose: message and reaction changes
+    protocol: Kafka
+  messaging:
+    role: producer
+    topic: message_events
+  evidence:
+  - path: SYSTEM_DESIGN.md
+    quote: '**Kafka:** produces `message_events`; consumes `community_events`, `social_events`,
+      `moderation_events` (`automod_rules_changed` only)'
+- id: r-messaging-consumes-community
+  source: kafka
+  target: messaging
+  type: event
+  direction: forward
+  interaction:
+    channel: messaging
+    purpose: member and channel projections
+    protocol: Kafka
+  messaging:
+    role: consumer
+    topic: community_events
+  evidence:
+  - path: SYSTEM_DESIGN.md
+    quote: '**Kafka:** produces `message_events`; consumes `community_events`, `social_events`,
+      `moderation_events` (`automod_rules_changed` only)'
+- id: r-messaging-consumes-social
+  source: kafka
+  target: messaging
+  type: event
+  direction: forward
+  interaction:
+    channel: messaging
+    purpose: conversation participant projection
+    protocol: Kafka
+  messaging:
+    role: consumer
+    topic: social_events
+  evidence:
+  - path: SYSTEM_DESIGN.md
+    quote: '**Kafka:** produces `message_events`; consumes `community_events`, `social_events`,
+      `moderation_events` (`automod_rules_changed` only)'
+- id: r-messaging-consumes-moderation
+  source: kafka
+  target: messaging
+  type: event
+  direction: forward
+  interaction:
+    channel: messaging
+    purpose: automod rule set snapshot
+    protocol: Kafka
+  messaging:
+    role: consumer
+    topic: moderation_events
+  evidence:
+  - path: SYSTEM_DESIGN.md
+    quote: '**Kafka:** produces `message_events`; consumes `community_events`, `social_events`,
+      `moderation_events` (`automod_rules_changed` only)'
+- id: r-voice-produces
+  source: voice
+  target: kafka
+  type: event
+  direction: forward
+  interaction:
+    channel: messaging
+    purpose: voice presence changes
+    protocol: Kafka
+  messaging:
+    role: producer
+    topic: voice_events
+  evidence:
+  - path: SYSTEM_DESIGN.md
+    quote: '**Kafka:** produces `voice_events`; consumes `community_events`'
+- id: r-voice-consumes
+  source: kafka
+  target: voice
+  type: event
+  direction: forward
+  interaction:
+    channel: messaging
+    purpose: membership and channel changes
+    protocol: Kafka
+  messaging:
+    role: consumer
+    topic: community_events
+  evidence:
+  - path: SYSTEM_DESIGN.md
+    quote: '**Kafka:** produces `voice_events`; consumes `community_events`'
+- id: r-notification-produces
+  source: notification
+  target: kafka
+  type: event
+  direction: forward
+  interaction:
+    channel: messaging
+    purpose: inbox updates for live push
+    protocol: Kafka
+  messaging:
+    role: producer
+    topic: notification_events
+  evidence:
+  - path: SYSTEM_DESIGN.md
+    quote: '**Kafka:** produces `notification_events`; consumes `identity_events`,
+      `moderation_events`, `social_events`, `message_events`'
+- id: r-notification-consumes-identity
+  source: kafka
+  target: notification
+  type: event
+  direction: forward
+  interaction:
+    channel: messaging
+    purpose: recipient contact projection
+    protocol: Kafka
+  messaging:
+    role: consumer
+    topic: identity_events
+  evidence:
+  - path: SYSTEM_DESIGN.md
+    quote: '**Kafka:** produces `notification_events`; consumes `identity_events`,
+      `moderation_events`, `social_events`, `message_events`'
+- id: r-notification-consumes-moderation
+  source: kafka
+  target: notification
+  type: event
+  direction: forward
+  interaction:
+    channel: messaging
+    purpose: moderation notices and appeal outcomes
+    protocol: Kafka
+  messaging:
+    role: consumer
+    topic: moderation_events
+  evidence:
+  - path: SYSTEM_DESIGN.md
+    quote: '**Kafka:** produces `notification_events`; consumes `identity_events`,
+      `moderation_events`, `social_events`, `message_events`'
+- id: r-notification-consumes-social
+  source: kafka
+  target: notification
+  type: event
+  direction: forward
+  interaction:
+    channel: messaging
+    purpose: friend request notices
+    protocol: Kafka
+  messaging:
+    role: consumer
+    topic: social_events
+  evidence:
+  - path: SYSTEM_DESIGN.md
+    quote: '**Kafka:** produces `notification_events`; consumes `identity_events`,
+      `moderation_events`, `social_events`, `message_events`'
+- id: r-notification-consumes-message
+  source: kafka
+  target: notification
+  type: event
+  direction: forward
+  interaction:
+    channel: messaging
+    purpose: mention notifications
+    protocol: Kafka
+  messaging:
+    role: consumer
+    topic: message_events
+  evidence:
+  - path: SYSTEM_DESIGN.md
+    quote: '**Kafka:** produces `notification_events`; consumes `identity_events`,
+      `moderation_events`, `social_events`, `message_events`'
+- id: r-realtime-consumes-community
+  source: kafka
+  target: realtime
+  type: event
+  direction: forward
+  interaction:
+    channel: messaging
+    purpose: member and channel push
+    protocol: Kafka
+  messaging:
+    role: consumer
+    topic: community_events
+  evidence:
+  - path: SYSTEM_DESIGN.md
+    quote: '**Kafka:** consumes `message_events`, `voice_events`, `community_events`,
+      `social_events`, `notification_events`'
+- id: r-realtime-consumes-social
+  source: kafka
+  target: realtime
+  type: event
+  direction: forward
+  interaction:
+    channel: messaging
+    purpose: conversation scope push
+    protocol: Kafka
+  messaging:
+    role: consumer
+    topic: social_events
+  evidence:
+  - path: SYSTEM_DESIGN.md
+    quote: '**Kafka:** consumes `message_events`, `voice_events`, `community_events`,
+      `social_events`, `notification_events`'
+- id: r-realtime-consumes-message
+  source: kafka
+  target: realtime
+  type: event
+  direction: forward
+  interaction:
+    channel: messaging
+    purpose: live message push
+    protocol: Kafka
+  messaging:
+    role: consumer
+    topic: message_events
+  evidence:
+  - path: SYSTEM_DESIGN.md
+    quote: '**Kafka:** consumes `message_events`, `voice_events`, `community_events`,
+      `social_events`, `notification_events`'
+- id: r-realtime-consumes-voice
+  source: kafka
+  target: realtime
+  type: event
+  direction: forward
+  interaction:
+    channel: messaging
+    purpose: voice presence push
+    protocol: Kafka
+  messaging:
+    role: consumer
+    topic: voice_events
+  evidence:
+  - path: SYSTEM_DESIGN.md
+    quote: '**Kafka:** consumes `message_events`, `voice_events`, `community_events`,
+      `social_events`, `notification_events`'
+- id: r-realtime-consumes-notification
+  source: kafka
+  target: realtime
+  type: event
+  direction: forward
+  interaction:
+    channel: messaging
+    purpose: personal notification push
+    protocol: Kafka
+  messaging:
+    role: consumer
+    topic: notification_events
+  evidence:
+  - path: SYSTEM_DESIGN.md
+    quote: '**Kafka:** consumes `message_events`, `voice_events`, `community_events`,
+      `social_events`, `notification_events`'
+view:
+  entities:
+  - browser
+  - identity
+  - identity-db
+  - identity-resend
+  - moderation
+  - moderation-db
+  - voice
+  - voice-db
+  - voice-livekit
+  - social
+  - social-db
+  - realtime
+  - kafka
+  - community
+  - community-db
+  - messaging
+  - messaging-db
+  - messaging-images
+  - notification
+  - notification-db
+  - notification-resend
+  groups:
+  - id: edge-lane
+    label: Application edge
+    lane: edge
+    members:
+    - browser
+  - id: user-lane
+    label: User facing services
+    lane: user-facing
+    members:
+    - identity
+    - identity-db
+    - identity-resend
+    - moderation
+    - moderation-db
+    - voice
+    - voice-db
+    - voice-livekit
+    - social
+    - social-db
+    - realtime
+  - id: kafka-lane
+    label: Kafka / event bus
+    lane: kafka
+    members:
+    - kafka
+  - id: internal-lane
+    label: Internal services
+    lane: internal
+    members:
+    - community
+    - community-db
+    - messaging
+    - messaging-db
+    - messaging-images
+    - notification
+    - notification-db
+    - notification-resend
+  edges:
+  - id: browser-identity
+    source: browser
+    target: identity
+    relationships:
+    - r-browser-identity
+    flow: forward
+  - id: browser-moderation
+    source: browser
+    target: moderation
+    relationships:
+    - r-browser-moderation
+    flow: forward
+  - id: browser-voice
+    source: browser
+    target: voice
+    relationships:
+    - r-browser-voice
+    flow: forward
+  - id: browser-social
+    source: browser
+    target: social
+    relationships:
+    - r-browser-social
+    flow: forward
+  - id: browser-realtime
+    source: browser
+    target: realtime
+    relationships:
+    - r-browser-realtime
+    flow: forward
+  - id: moderation-community
+    source: moderation
+    target: community
+    relationships:
+    - r-moderation-community
+    flow: forward
+  - id: voice-community
+    source: voice
+    target: community
+    relationships:
+    - r-voice-community
+    flow: forward
+  - id: realtime-messaging
+    source: realtime
+    target: messaging
+    relationships:
+    - r-realtime-messaging
+    flow: forward
+  - id: identity-produces
+    source: identity
+    target: kafka
+    relationships:
+    - r-identity-produces
+    flow: forward
+  - id: moderation-produces
+    source: moderation
+    target: kafka
+    relationships:
+    - r-moderation-produces
+    flow: forward
+  - id: voice-produces
+    source: voice
+    target: kafka
+    relationships:
+    - r-voice-produces
+    flow: forward
+  - id: voice-consumes
+    source: kafka
+    target: voice
+    relationships:
+    - r-voice-consumes
+    flow: feedback
+  - id: social-produces
+    source: social
+    target: kafka
+    relationships:
+    - r-social-produces
+    flow: forward
+  - id: realtime-consumes
+    source: kafka
+    target: realtime
+    relationships:
+    - r-realtime-consumes-community
+    - r-realtime-consumes-social
+    - r-realtime-consumes-message
+    - r-realtime-consumes-voice
+    - r-realtime-consumes-notification
+    flow: feedback
+  - id: community-produces
+    source: community
+    target: kafka
+    relationships:
+    - r-community-produces
+    flow: forward
+  - id: community-consumes
+    source: kafka
+    target: community
+    relationships:
+    - r-community-consumes
+    flow: feedback
+  - id: messaging-produces
+    source: messaging
+    target: kafka
+    relationships:
+    - r-messaging-produces
+    flow: forward
+  - id: messaging-consumes
+    source: kafka
+    target: messaging
+    relationships:
+    - r-messaging-consumes-community
+    - r-messaging-consumes-social
+    - r-messaging-consumes-moderation
+    flow: feedback
+  - id: notification-produces
+    source: notification
+    target: kafka
+    relationships:
+    - r-notification-produces
+    flow: forward
+  - id: notification-consumes
+    source: kafka
+    target: notification
+    relationships:
+    - r-notification-consumes-identity
+    - r-notification-consumes-moderation
+    - r-notification-consumes-social
+    - r-notification-consumes-message
+    flow: feedback
+  omitted: []
